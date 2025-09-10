@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>M3U Checker — LearnLinuxOnline</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+:root{
+  --primary:#1976d2; --muted:#666; --success:#2ecc71; --danger:#e74c3c;
+}
+body{font-family:Arial,Segoe UI,sans-serif;background:#eef6ff;margin:0;padding:20px;color:#222}
+.container{max-width:1200px;margin:auto;background:#fff;padding:20px;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.08)}
+h1{color:var(--primary);margin:0 0 8px}
+.subtitle{color:var(--muted);margin-bottom:20px}
+.card{background:#fff;border:1px solid #eee;border-radius:8px;padding:15px;margin-bottom:15px}
+.input{padding:10px;border:1px solid #ddd;border-radius:6px;width:100%;font-size:14px}
+.button{background:var(--primary);color:#fff;border:none;padding:10px 15px;border-radius:6px;cursor:pointer;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.button.ghost{background:#f1f5f9;color:#222}
+.button:hover{opacity:0.9}
+.progress{width:100%;height:10px;background:#f1f3f5;border-radius:6px;overflow:hidden;margin-bottom:10px}
+.progress > i{height:100%;display:block;width:0;background:linear-gradient(90deg,var(--primary),#4aa3ff);transition:width 0.3s}
+.stats{display:flex;gap:12px;margin-top:15px}
+.stat{flex:1;min-width:100px;background:#f9fbff;padding:12px;border-radius:6px;text-align:center;border:1px solid #eee;box-shadow:0 2px 4px rgba(0,0,0,0.05)}
+.stat-value{font-size:20px;font-weight:bold;margin-bottom:4px}
+.stat-label{font-size:12px;color:#666}
+.channel-list{max-height:400px;overflow:auto;border:1px solid #eee;border-radius:6px;margin-top:15px}
+.header-row,.channel-row{display:grid;grid-template-columns:50px 2fr 90px 90px 100px 70px;gap:10px;padding:10px;align-items:center}
+.header-row{background:#f7fbff;font-weight:700;border-bottom:1px solid #eee;position:sticky;top:0;z-index:10}
+.channel-row{border-bottom:1px dashed #f0f0f0;font-size:14px}
+.channel-row:hover{background:#f9f9f9}
+.status-online{color:var(--success);font-weight:600}
+.status-offline{color:var(--danger);font-weight:600}
+.footer{text-align:center;color:#888;margin-top:20px;font-size:13px}
+.small{font-size:12px;color:#666;display:block;margin-bottom:5px}
+.input-group{margin-bottom:15px}
+.controls-row{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+.control-item{flex:1;min-width:150px}
+.actions-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:15px}
+.action-btn{flex:1;min-width:120px;justify-content:center}
+.player-info{display:flex;align-items:center;gap:10px;margin-top:10px}
+#selected-name{font-weight:700}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>M3U Checker</h1>
+  <div class="subtitle">Check and validate your M3U playlists</div>
+
+  <!-- Input controls -->
+  <div class="card">
+    <div class="controls-row">
+      <div class="control-item">
+        <label class="small">M3U URL</label>
+        <input id="m3u-link" class="input" placeholder="https://example.com/playlist.m3u" />
+      </div>
+      <div class="control-item">
+        <label class="small">Or select file</label>
+        <input id="m3u-file" type="file" accept=".m3u,.m3u8" style="display:block;width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;background:#fff" />
+      </div>
+      <div class="control-item">
+        <label class="small">Concurrency</label>
+        <select id="concurrency" class="input"><option>6</option><option selected>10</option><option>16</option></select>
+      </div>
+      <div class="control-item">
+        <label class="small">Timeout (s)</label>
+        <input id="timeout" class="input" type="number" value="8" />
+      </div>
+      <div class="control-item">
+        <button class="button" id="start-btn"><i class="fas fa-play"></i> Start</button>
+        <button class="button ghost" id="stop-btn" style="margin-left:8px"><i class="fas fa-stop"></i> Stop</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="card">
+    <div class="progress"><i id="progress-bar"></i></div>
+    <div class="stats" id="stats" style="display:none">
+      <div class="stat">
+        <div class="stat-value" id="s-total">0</div>
+        <div class="stat-label">Total</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="s-online">0</div>
+        <div class="stat-label">Online</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value" id="s-offline">0</div>
+        <div class="stat-label">Offline</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card">
+    <div class="controls-row">
+      <div class="control-item">
+        <label class="small">Search channel</label>
+        <input id="search" class="input" placeholder="Enter channel name...">
+      </div>
+      <div class="control-item">
+        <label class="small">Status</label>
+        <select id="status-filter" class="input">
+          <option value="all">All Status</option>
+          <option value="online">Online</option>
+          <option value="offline">Offline</option>
+        </select>
+      </div>
+      <div class="control-item">
+        <label class="small">Quality</label>
+        <select id="quality-filter" class="input">
+          <option value="all">All Quality</option>
+          <option value="HD">HD</option>
+          <option value="SD">SD</option>
+        </select>
+      </div>
+    </div>
+    
+    <div class="actions-row">
+      <button class="button ghost action-btn" id="export-csv"><i class="fas fa-file-csv"></i> Export CSV</button>
+      <button class="button ghost action-btn" id="copy-clipboard"><i class="fas fa-copy"></i> Copy</button>
+      <button class="button ghost action-btn" id="export-flussonic"><i class="fas fa-download"></i> Export Flussonic</button>
+    </div>
+  </div>
+
+  <!-- Channel list -->
+  <div class="card" id="channel-list-wrap" style="display:none">
+    <h3 style="margin-top:0">Channel List</h3>
+    <div class="channel-list">
+      <div class="header-row">
+        <div>ID</div>
+        <div>Channel Name</div>
+        <div>Status</div>
+        <div>Quality</div>
+        <div>Bitrate</div>
+        <div>Play</div>
+      </div>
+      <div id="channel-list"></div>
+    </div>
+  </div>
+
+  <!-- Player -->
+  <div class="card" id="player-wrap" style="display:none">
+    <h3 style="margin-top:0">Preview Player</h3>
+    <video id="preview-player" controls style="width:100%;max-height:360px;background:#000;border-radius:6px"></video>
+    <div class="player-info">
+      <i class="fas fa-tv"></i>
+      <div id="selected-name"></div>
+    </div>
+  </div>
+
+  <div class="footer">© LearnLinuxOnline • M3U Checker</div>
+</div>
+
+<script>
+const m3uLink = document.getElementById('m3u-link');
+const m3uFile = document.getElementById('m3u-file');
+const startBtn = document.getElementById('start-btn');
+const stopBtn = document.getElementById('stop-btn');
+const progressBar = document.getElementById('progress-bar');
+const statsWrap = document.getElementById('stats');
+const sTotal = document.getElementById('s-total');
+const sOnline = document.getElementById('s-online');
+const sOffline = document.getElementById('s-offline');
+const channelList = document.getElementById('channel-list');
+const channelListWrap = document.getElementById('channel-list-wrap');
+const previewPlayer = document.getElementById('preview-player');
+const playerWrap = document.getElementById('player-wrap');
+const selectedName = document.getElementById('selected-name');
+const searchEl = document.getElementById('search');
+const statusFilter = document.getElementById('status-filter');
+const qualityFilter = document.getElementById('quality-filter');
+const exportCsvBtn = document.getElementById('export-csv');
+const copyBtn = document.getElementById('copy-clipboard');
+const exportFlussonicBtn = document.getElementById('export-flussonic');
+
+let allChannels = [], checking = false, stopRequested = false, totalToCheck = 0, checkedCount = 0;
+
+function parseM3U(content) {
+  const lines = content.replace(/\r/g, '').split('\n');
+  const chans = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('#EXTINF')) {
+      const ext = lines[i];
+      const name = ext.split(',').slice(1).join(',').trim() || 'Unknown';
+      let url = '';
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim() && !lines[j].startsWith('#')) {
+          url = lines[j].trim();
+          break;
+        }
+      }
+      if (url) {
+        const groupM = ext.match(/group-title="([^"]*)"/i);
+        const group = groupM ? groupM[1] : "";
+        chans.push({
+          name,
+          url,
+          status: 'pending',
+          quality: name.toLowerCase().includes('hd') ? 'HD' : 'SD',
+          bitrate: '0 kbps',
+          group
+        });
+      }
+    }
+  }
+  return chans;
+}
+
+function updateStats() {
+  sTotal.textContent = allChannels.length;
+  sOnline.textContent = allChannels.filter(c => c.status === 'online').length;
+  sOffline.textContent = allChannels.filter(c => c.status === 'offline').length;
+  statsWrap.style.display = allChannels.length ? 'flex' : 'none';
+}
+
+function setProgress(p) {
+  progressBar.style.width = p + '%';
+}
+
+function renderList() {
+  const search = (searchEl.value || '').toLowerCase();
+  const status = statusFilter.value;
+  const quality = qualityFilter.value;
+  const filtered = allChannels.filter(ch => {
+    if (status !== 'all' && ch.status !== status) return false;
+    if (quality !== 'all' && ch.quality !== quality) return false;
+    if (search && !ch.name.toLowerCase().includes(search)) return false;
+    return true;
+  });
+  
+  channelList.innerHTML = '';
+  filtered.forEach((ch, idx) => {
+    const div = document.createElement('div');
+    div.className = 'channel-row';
+    div.innerHTML = `
+      <div>${idx + 1}</div>
+      <div>${ch.name}<br><span style="font-size:11px;color:#777">${ch.url}</span></div>
+      <div class="${ch.status === 'online' ? 'status-online' : 'status-offline'}">${ch.status}</div>
+      <div>${ch.quality}</div>
+      <div>${ch.bitrate}</div>
+      <div><button class="button ghost" data-url="${encodeURIComponent(ch.url)}" data-name="${encodeURIComponent(ch.name)}"><i class="fas fa-play"></i></button></div>`;
+    div.querySelector('button').onclick = () => playPreview(
+      decodeURIComponent(div.querySelector('button').dataset.url),
+      decodeURIComponent(div.querySelector('button').dataset.name)
+    );
+    channelList.appendChild(div);
+  });
+  channelListWrap.style.display = filtered.length ? 'block' : 'none';
+}
+
+async function checkChannel(ch, timeoutMs = 8000) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const r = await fetch(ch.url, { method: 'HEAD', signal: ctrl.signal });
+    clearTimeout(t);
+    if (r.ok || r.type === 'opaque') {
+      ch.status = 'online';
+      ch.bitrate = '~3 Mbps';
+    } else {
+      ch.status = 'offline';
+    }
+  } catch (e) {
+    ch.status = 'offline';
+  }
+}
+
+async function checkAll() {
+  checking = true;
+  stopRequested = false;
+  totalToCheck = allChannels.length;
+  checkedCount = 0;
+  const concurrency = parseInt(document.getElementById('concurrency').value) || 10;
+  const timeout = parseInt(document.getElementById('timeout').value) * 1000;
+  const queue = allChannels.slice();
+  
+  async function worker() {
+    while (queue.length && !stopRequested) {
+      const ch = queue.shift();
+      await checkChannel(ch, timeout);
+      checkedCount++;
+      setProgress(Math.round(checkedCount / totalToCheck * 100));
+      updateStats();
+      renderList();
+    }
+  }
+  
+  await Promise.all(new Array(concurrency).fill(0).map(worker));
+  checking = false;
+  setProgress(100);
+}
+
+function playPreview(url, name) {
+  if (Hls.isSupported() && url.toLowerCase().includes(".m3u8")) {
+    const hls = new Hls();
+    hls.loadSource(url);
+    hls.attachMedia(previewPlayer);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      previewPlayer.play().catch(() => {});
+    });
+  } else {
+    previewPlayer.src = url;
+    previewPlayer.load();
+    previewPlayer.play().catch(() => {});
+  }
+  playerWrap.style.display = 'block';
+  selectedName.textContent = name;
+}
+
+function exportCSV() {
+  const rows = [["Name", "URL", "Status", "Quality", "Bitrate", "Group"]];
+  allChannels.forEach(c => rows.push([c.name, c.url, c.status, c.quality, c.bitrate, c.group]));
+  const csv = rows.map(r => r.join(",")).join("\n");
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'channels.csv';
+  a.click();
+}
+
+function copyClipboard() {
+  const txt = allChannels.map(c => `${c.name}\t${c.url}\t${c.status}\t${c.group}`).join("\n");
+  navigator.clipboard.writeText(txt).then(() => alert("Copied to clipboard!"));
+}
+
+function exportFlussonic() {
+  let conf = "";
+  // Group channels by group title
+  const groups = {};
+  allChannels.forEach((c, idx) => {
+    const g = c.group || "Ungrouped";
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(c);
+  });
+  
+  Object.keys(groups).forEach(g => {
+    conf += `# ===== Group: ${g} =====\n`;
+    groups[g].forEach((c, idx) => {
+      const safeName = c.name.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+      conf += `stream ${safeName || "channel" + (idx + 1)} {\n    url ${c.url};\n}\n\n`;
+    });
+  });
+  
+  const blob = new Blob([conf], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "flussonic_streams.conf";
+  a.click();
+}
+
+startBtn.onclick = async () => {
+  let content = '';
+  if (m3uFile.files[0]) {
+    content = await m3uFile.files[0].text();
+  } else if (m3uLink.value.trim()) {
+    try {
+      const r = await fetch(m3uLink.value.trim());
+      content = await r.text();
+    } catch (e) {
+      alert('Error loading M3U URL');
+      return;
+    }
+  }
+  
+  if (!content) {
+    alert('No playlist content found');
+    return;
+  }
+  
+  allChannels = parseM3U(content);
+  updateStats();
+  renderList();
+  checkAll();
+};
+
+stopBtn.onclick = () => {
+  stopRequested = true;
+  checking = false;
+};
+
+[searchEl, statusFilter, qualityFilter].forEach(el => el.oninput = renderList);
+exportCsvBtn.onclick = exportCSV;
+copyBtn.onclick = copyClipboard;
+exportFlussonicBtn.onclick = exportFlussonic;
+</script>
+</body>
+</html>
